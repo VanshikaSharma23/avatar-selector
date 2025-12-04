@@ -1,9 +1,4 @@
-import React, {
-  useState,
-  Suspense,
-  useRef,
-  useLayoutEffect,
-} from "react";
+import React, { useState, Suspense, useRef, useLayoutEffect } from "react";
 import "./index.css";
 
 import { Canvas } from "@react-three/fiber";
@@ -27,36 +22,52 @@ import bengaliModel from "./assets/models/Bengali.glb?url";
 import himachaliModel from "./assets/models/Himachali.glb?url";
 
 // Avatars list (Himachali has custom offset to fix framing)
+// Also includes basic voice metadata that we'll use to drive text‑to‑speech.
 const AVATARS = [
   {
     id: "south-indian",
     name: "South Indian",
     imageUrl: southIndianImg,
     modelUrl: southIndianModel,
+    gender: "female",
+    language: "en-IN",
+    defaultTone: "calm",
   },
   {
     id: "punjabi",
     name: "Punjabi",
     imageUrl: punjabiImg,
     modelUrl: punjabiModel,
+    gender: "male",
+    language: "en-IN",
+    defaultTone: "energetic",
   },
   {
     id: "female-1",
     name: "Female 1",
     imageUrl: female1Img,
     modelUrl: female1Model,
+    gender: "female",
+    language: "en-US",
+    defaultTone: "neutral",
   },
   {
     id: "female-2",
     name: "Female 2",
     imageUrl: female2Img,
     modelUrl: female2Model,
+    gender: "female",
+    language: "en-GB",
+    defaultTone: "calm",
   },
   {
     id: "bengali",
     name: "Bengali",
     imageUrl: bengaliImg,
     modelUrl: bengaliModel,
+    gender: "female",
+    language: "en-IN",
+    defaultTone: "warm",
   },
   {
     id: "himachali",
@@ -65,6 +76,9 @@ const AVATARS = [
     modelUrl: himachaliModel,
     scaleFactor: 2.3,
     yOffset: -0.35, // adjust up/down if needed
+    gender: "male",
+    language: "en-IN",
+    defaultTone: "friendly",
   },
 ];
 
@@ -259,6 +273,139 @@ function AvatarDropdown({ avatars, selected, onSelect }) {
 
 export default function App() {
   const [selected, setSelected] = useState(null);
+  const [ttsText, setTtsText] = useState("");
+  const [tone, setTone] = useState("neutral");
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [genderVoices, setGenderVoices] = useState({ male: null, female: null });
+
+  // Load browser voices for SpeechSynthesis
+  React.useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+
+    const hydrateVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices || !voices.length) return;
+      setAvailableVoices(voices);
+
+      // Heuristic buckets for male / female voices so we can pick more stable voices per gender.
+      const lower = (s) => (s || "").toLowerCase();
+      const femaleCandidates = voices.filter((v) =>
+        ["female", "woman", "girl", "samantha", "victoria", "kate", "maria"].some((kw) =>
+          lower(v.name).includes(kw)
+        )
+      );
+      const maleCandidates = voices.filter((v) =>
+        ["male", "man", "boy", "daniel", "alex", "david"].some((kw) =>
+          lower(v.name).includes(kw)
+        )
+      );
+
+      setGenderVoices({
+        female: femaleCandidates[0] || null,
+        male: maleCandidates[0] || null,
+      });
+    };
+
+    hydrateVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", hydrateVoices);
+
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", hydrateVoices);
+    };
+  }, []);
+
+  // Whenever avatar changes, align tone with avatar default
+  React.useEffect(() => {
+    if (selected?.defaultTone) {
+      setTone(selected.defaultTone);
+    }
+  }, [selected]);
+
+  const stopSpeaking = () => {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
+
+  const chooseVoiceForAvatar = (avatar) => {
+    if (!avatar || !availableVoices.length) return null;
+
+    const targetGender = avatar.gender?.toLowerCase() === "female" ? "female" : "male";
+
+    // 1) Try pre-bucketed gender voice (stable across avatars).
+    if (genderVoices[targetGender]) {
+      return genderVoices[targetGender];
+    }
+
+    // 2) Try matching by language and simple gender keyword hints.
+    const avatarLang = (avatar.language || "").toLowerCase();
+    const langMatches = availableVoices.filter((v) =>
+      v.lang && v.lang.toLowerCase().startsWith(avatarLang)
+    );
+
+    const genderHint = targetGender;
+    const genderMatched =
+      langMatches.find((v) =>
+        v.name.toLowerCase().includes(genderHint)
+      ) || langMatches[0];
+
+    // 3) Fallback to first available voice.
+    return genderMatched || availableVoices[0] || null;
+  };
+
+  const handleSpeak = () => {
+    if (!selected || !ttsText.trim()) return;
+    if (!("speechSynthesis" in window)) {
+      alert("Text to Speech is not supported in this browser.");
+      return;
+    }
+
+    stopSpeaking();
+
+    const utterance = new SpeechSynthesisUtterance(ttsText);
+    const chosenVoice = chooseVoiceForAvatar(selected);
+    if (chosenVoice) {
+      utterance.voice = chosenVoice;
+    }
+
+    // Adjust voice characteristics based on avatar tone and the selected tone.
+    // Here we intentionally exaggerate differences so each tone is clearly audible.
+    const effectiveTone = tone || selected.defaultTone || "neutral";
+    switch (effectiveTone) {
+      case "energetic":
+        // Noticeably fast and a bit higher pitch
+        utterance.rate = 1.6;
+        utterance.pitch = 1.3;
+        break;
+      case "calm":
+        // Clearly slower and slightly deeper
+        utterance.rate = 0.7;
+        utterance.pitch = 0.8;
+        break;
+      case "warm":
+        // Medium speed, richer / slightly higher pitch
+        utterance.rate = 0.95;
+        utterance.pitch = 1.4;
+        break;
+      case "friendly":
+        // A bit faster than normal and clearly higher pitch
+        utterance.rate = 1.2;
+        utterance.pitch = 1.6;
+        break;
+      case "neutral":
+      default:
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        break;
+    }
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   const handleSelect = (avatar) => {
     setSelected(avatar);
@@ -296,7 +443,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* RIGHT: 3D preview + dropdown + select button */}
+        {/* RIGHT: 3D preview + dropdown + select button + TTS controls */}
         <aside className="preview">
           <div className="preview-card">
             <h2>Preview</h2>
@@ -350,6 +497,78 @@ export default function App() {
                   >
                     Select this avatar
                   </button>
+
+                  {/* Text‑to‑Speech controls */}
+                  <div className="tts-panel">
+                    <h3>Text to Speech</h3>
+                    <div className="tts-row">
+                      <label className="tts-label" htmlFor="tts-text">
+                        Text
+                      </label>
+                      <textarea
+                        id="tts-text"
+                        className="tts-input"
+                        rows={3}
+                        placeholder="Type what you want your AI teacher to say…"
+                        value={ttsText}
+                        onChange={(e) => setTtsText(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="tts-row tts-row-inline">
+                      <div>
+                        <label className="tts-label" htmlFor="tts-tone">
+                          Tone
+                        </label>
+                        <select
+                          id="tts-tone"
+                          className="tts-select"
+                          value={tone}
+                          onChange={(e) => setTone(e.target.value)}
+                        >
+                          <option value="neutral">Neutral</option>
+                          <option value="calm">Calm</option>
+                          <option value="energetic">Energetic</option>
+                          <option value="warm">Warm</option>
+                          <option value="friendly">Friendly</option>
+                        </select>
+                      </div>
+
+                      <div className="tts-meta">
+                        <div>
+                          <span className="tts-meta-label">Avatar gender:</span>{" "}
+                          <span className="tts-meta-value">
+                            {selected.gender || "N/A"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="tts-meta-label">Language:</span>{" "}
+                          <span className="tts-meta-value">
+                            {selected.language || "auto"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="tts-actions">
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={handleSpeak}
+                        disabled={!ttsText.trim() || isSpeaking}
+                      >
+                        {isSpeaking ? "Speaking…" : "Speak"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        onClick={stopSpeaking}
+                        disabled={!isSpeaking}
+                      >
+                        Stop
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </>
             ) : (
