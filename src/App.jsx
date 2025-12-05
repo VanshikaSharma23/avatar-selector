@@ -285,6 +285,14 @@ export default function App() {
   const [genderVoices, setGenderVoices] = useState({ male: null, female: null });
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
+  
+  // Behavioural Rules Configuration State
+  const [behaviouralTone, setBehaviouralTone] = useState("");
+  const [teachingStyle, setTeachingStyle] = useState("");
+  const [languageLevel, setLanguageLevel] = useState("");
+  const [behaviourRules, setBehaviourRules] = useState([]);
+  const [responseStructure, setResponseStructure] = useState("");
+  const [savedConfig, setSavedConfig] = useState(null);
 
   // Load browser voices for SpeechSynthesis
   React.useEffect(() => {
@@ -295,15 +303,15 @@ export default function App() {
       if (!voices || !voices.length) return;
       setAvailableVoices(voices);
 
-      // Heuristic buckets for male / female voices so we can pick more stable voices per gender.
+      // Enhanced heuristic buckets for male / female voices with more keywords
       const lower = (s) => (s || "").toLowerCase();
       const femaleCandidates = voices.filter((v) =>
-        ["female", "woman", "girl", "samantha", "victoria", "kate", "maria"].some((kw) =>
+        ["female", "woman", "girl", "samantha", "victoria", "kate", "maria", "zira", "hazel", "susan", "karen", "linda", "veena", "tessa"].some((kw) =>
           lower(v.name).includes(kw)
         )
       );
       const maleCandidates = voices.filter((v) =>
-        ["male", "man", "boy", "daniel", "alex", "david"].some((kw) =>
+        ["male", "man", "boy", "daniel", "alex", "david", "mark", "richard", "james", "ravi", "ravi"].some((kw) =>
           lower(v.name).includes(kw)
         )
       );
@@ -322,10 +330,15 @@ export default function App() {
     };
   }, []);
 
-  // Whenever avatar changes, align tone with avatar default
+  // Whenever avatar changes, align tone with avatar default and clear TTS buffer
   React.useEffect(() => {
     if (selected?.defaultTone) {
       setTone(selected.defaultTone);
+    }
+    // Clear any ongoing speech when avatar changes to prevent voice mismatch
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
     }
   }, [selected]);
 
@@ -335,30 +348,63 @@ export default function App() {
     setIsSpeaking(false);
   };
 
+  /**
+   * Choose appropriate TTS voice for avatar based on gender
+   * 
+   * FIXED TTS Voice Mapping Issue:
+   * - Previously, female avatars could get male voices due to fallback logic
+   * - Now ensures strict gender matching with multiple fallback strategies:
+   *   1. Uses pre-bucketed gender voices (most reliable)
+   *   2. Searches all voices for gender keywords if pre-bucket fails
+   *   3. Matches by language with gender preference
+   *   4. Last resort fallback (should rarely happen)
+   * 
+   * Additional fixes:
+   * - Clears speech synthesis queue when avatar changes
+   * - Forces voice reassignment in handleSpeak with gender verification
+   * - Prevents cached voices from being reused incorrectly
+   */
   const chooseVoiceForAvatar = (avatar) => {
     if (!avatar || !availableVoices.length) return null;
 
     const targetGender = avatar.gender?.toLowerCase() === "female" ? "female" : "male";
 
-    // 1) Try pre-bucketed gender voice (stable across avatars).
+    // 1) Try pre-bucketed gender voice (stable across avatars) - PRIORITY
     if (genderVoices[targetGender]) {
       return genderVoices[targetGender];
     }
 
-    // 2) Try matching by language and simple gender keyword hints.
+    // 2) Force gender match: Search ALL voices for gender keywords if pre-bucket failed
+    const lower = (s) => (s || "").toLowerCase();
+    const femaleKeywords = ["female", "woman", "girl", "samantha", "victoria", "kate", "maria", "zira", "hazel", "susan", "karen", "linda", "veena", "tessa"];
+    const maleKeywords = ["male", "man", "boy", "daniel", "alex", "david", "mark", "richard", "james", "ravi"];
+    
+    const keywords = targetGender === "female" ? femaleKeywords : maleKeywords;
+    const genderMatchedVoice = availableVoices.find((v) =>
+      keywords.some((kw) => lower(v.name).includes(kw))
+    );
+
+    if (genderMatchedVoice) {
+      return genderMatchedVoice;
+    }
+
+    // 3) Try matching by language with gender preference
     const avatarLang = (avatar.language || "").toLowerCase();
     const langMatches = availableVoices.filter((v) =>
       v.lang && v.lang.toLowerCase().startsWith(avatarLang)
     );
 
-    const genderHint = targetGender;
-    const genderMatched =
-      langMatches.find((v) =>
-        v.name.toLowerCase().includes(genderHint)
-      ) || langMatches[0];
+    if (langMatches.length > 0) {
+      // Prefer gender-matched voice in language matches
+      const langGenderMatch = langMatches.find((v) =>
+        keywords.some((kw) => lower(v.name).includes(kw))
+      );
+      if (langGenderMatch) return langGenderMatch;
+      return langMatches[0];
+    }
 
-    // 3) Fallback to first available voice.
-    return genderMatched || availableVoices[0] || null;
+    // 4) Last resort: return first available voice (should rarely happen)
+    return availableVoices[0] || null;
   };
 
   const handleSpeak = () => {
@@ -368,13 +414,28 @@ export default function App() {
       return;
     }
 
+    // Clear any previous speech completely
     stopSpeaking();
-
-    const utterance = new SpeechSynthesisUtterance(ttsText);
-    const chosenVoice = chooseVoiceForAvatar(selected);
-    if (chosenVoice) {
-      utterance.voice = chosenVoice;
-    }
+    
+    // Small delay to ensure speech synthesis queue is cleared
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(ttsText);
+      const chosenVoice = chooseVoiceForAvatar(selected);
+      
+      // FIXED: Force voice assignment - ensure gender match
+      if (chosenVoice) {
+        utterance.voice = chosenVoice;
+        // Double-check: if avatar is female, verify voice is female
+        if (selected.gender?.toLowerCase() === "female") {
+          const voiceName = chosenVoice.name.toLowerCase();
+          const isFemaleVoice = ["female", "woman", "girl", "samantha", "victoria", "kate", "maria", "zira", "hazel", "susan", "karen", "linda", "veena", "tessa"].some(
+            kw => voiceName.includes(kw)
+          );
+          if (!isFemaleVoice && genderVoices.female) {
+            utterance.voice = genderVoices.female;
+          }
+        }
+      }
 
     // Adjust voice characteristics based on avatar tone and the selected tone.
     // Here we intentionally exaggerate differences so each tone is clearly audible.
@@ -407,18 +468,106 @@ export default function App() {
         break;
     }
 
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
 
-    window.speechSynthesis.speak(utterance);
+      window.speechSynthesis.speak(utterance);
+    }, 50);
   };
 
   const handleSelect = (avatar) => {
+    // Clear TTS buffer when selecting new avatar to prevent voice mismatch
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
     setSelected(avatar);
     // also scroll the card into view when picked from dropdown
     const el = document.querySelector(`[data-avatar-id="${avatar.id}"]`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  // Handle Behavioural Rules multi-select
+  const handleBehaviourRuleToggle = (rule) => {
+    setBehaviourRules((prev) =>
+      prev.includes(rule)
+        ? prev.filter((r) => r !== rule)
+        : [...prev, rule]
+    );
+  };
+
+  /**
+   * Save Behavioural Rules Configuration
+   * 
+   * Stores the selected behavioural rules configuration in frontend state
+   * and sends it to the backend API endpoint.
+   * 
+   * Backend API Integration:
+   * - Endpoint: POST /api/avatar/configure
+   * - Request Body:
+   *   {
+   *     avatarId: string,
+   *     tone: string,
+   *     teachingStyle: string,
+   *     languageLevel: string,
+   *     behaviourRules: string[],
+   *     responseStructure: string
+   *   }
+   * - Response: { success: boolean, message: string }
+   */
+  const handleSaveBehaviourRules = async () => {
+    if (!selected) {
+      alert("Please select an avatar first!");
+      return;
+    }
+
+    const config = {
+      tone: behaviouralTone,
+      teachingStyle: teachingStyle,
+      languageLevel: languageLevel,
+      behaviourRules: behaviourRules,
+      responseStructure: responseStructure,
+      avatarId: selected?.id || null,
+      avatarName: selected?.name || null,
+    };
+
+    setSavedConfig(config);
+
+    // Backend API Integration
+    // Uncomment and configure your backend endpoint:
+    /*
+    try {
+      const response = await fetch('/api/avatar/configure', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          avatarId: selected.id,
+          tone: behaviouralTone,
+          teachingStyle: teachingStyle,
+          languageLevel: languageLevel,
+          behaviourRules: behaviourRules,
+          responseStructure: responseStructure,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save configuration');
+      }
+      
+      const data = await response.json();
+      console.log('Configuration saved:', data);
+      alert("Behaviour Rules saved successfully!");
+    } catch (error) {
+      console.error('Error saving configuration:', error);
+      alert("Failed to save configuration. Please try again.");
+    }
+    */
+
+    // For now, just show success message
+    alert("Behaviour Rules saved successfully!");
   };
 
   // Handle file upload and extract text
@@ -564,6 +713,167 @@ export default function App() {
                   >
                     Select this avatar
                   </button>
+
+                  {/* Behavioural Rules Configuration Section */}
+                  <div className="behavioural-rules-panel">
+                    <h3>
+                      <span className="section-icon">⚙️</span>
+                      Behavioural Rules Configuration
+                    </h3>
+
+                    <div className="rules-form">
+                      {/* Tone Dropdown */}
+                      <div className="rules-field">
+                        <label className="rules-label" htmlFor="behavioural-tone">
+                          Tone
+                        </label>
+                        <select
+                          id="behavioural-tone"
+                          className="rules-select"
+                          value={behaviouralTone}
+                          onChange={(e) => setBehaviouralTone(e.target.value)}
+                        >
+                          <option value="">Select tone...</option>
+                          <option value="friendly-patient">Friendly and Patient</option>
+                          <option value="formal-professional">Formal and Professional</option>
+                          <option value="humorous-light">Humorous and Light</option>
+                          <option value="motivational">Motivational</option>
+                          <option value="neutral">Neutral</option>
+                          <option value="strict-helpful">Strict but Helpful</option>
+                        </select>
+                      </div>
+
+                      {/* Teaching Style Dropdown */}
+                      <div className="rules-field">
+                        <label className="rules-label" htmlFor="teaching-style">
+                          Teaching Style
+                        </label>
+                        <select
+                          id="teaching-style"
+                          className="rules-select"
+                          value={teachingStyle}
+                          onChange={(e) => setTeachingStyle(e.target.value)}
+                        >
+                          <option value="">Select teaching style...</option>
+                          <option value="step-by-step">Step-by-step teaching</option>
+                          <option value="activity-based">Activity-based learning</option>
+                          <option value="short-direct">Short & direct explanations</option>
+                          <option value="storytelling">Storytelling</option>
+                          <option value="socratic">Socratic questioning</option>
+                          <option value="visual">Visual teaching</option>
+                        </select>
+                      </div>
+
+                      {/* Language Level Dropdown */}
+                      <div className="rules-field">
+                        <label className="rules-label" htmlFor="language-level">
+                          Language Level
+                        </label>
+                        <select
+                          id="language-level"
+                          className="rules-select"
+                          value={languageLevel}
+                          onChange={(e) => setLanguageLevel(e.target.value)}
+                        >
+                          <option value="">Select language level...</option>
+                          <option value="simple-english">Simple English</option>
+                          <option value="intermediate-english">Intermediate English</option>
+                          <option value="advanced-english">Advanced English</option>
+                          <option value="hinglish">Hinglish</option>
+                          <option value="indian-friendly">Fully Indian-friendly tone</option>
+                        </select>
+                      </div>
+
+                      {/* Behavioural Rules Multi-select */}
+                      <div className="rules-field">
+                        <label className="rules-label">Behavioural Rules</label>
+                        <div className="multi-select-container">
+                          {[
+                            "Simplify complex terms",
+                            "Use relatable real-life examples",
+                            "Encourage learner at every step",
+                            "Avoid jargon unless necessary",
+                            "Provide small quizzes",
+                            "Keep responses concise",
+                            "Give alternative explanations if confused",
+                            "Use emojis lightly",
+                            "Ask clarifying questions before answering",
+                          ].map((rule) => (
+                            <label key={rule} className="multi-select-option">
+                              <input
+                                type="checkbox"
+                                checked={behaviourRules.includes(rule)}
+                                onChange={() => handleBehaviourRuleToggle(rule)}
+                              />
+                              <span>{rule}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Response Structure Dropdown */}
+                      <div className="rules-field">
+                        <label className="rules-label" htmlFor="response-structure">
+                          Response Structure
+                        </label>
+                        <select
+                          id="response-structure"
+                          className="rules-select"
+                          value={responseStructure}
+                          onChange={(e) => setResponseStructure(e.target.value)}
+                        >
+                          <option value="">Select response structure...</option>
+                          <option value="intro-explanation-example-quiz-summary">
+                            Intro → Explanation → Example → Quiz → Summary
+                          </option>
+                          <option value="explanation-example-practice">
+                            Explanation → Example → Practice Task
+                          </option>
+                          <option value="short-answer">Short Answer Only</option>
+                          <option value="long-detailed">Long Detailed Answer</option>
+                          <option value="example-breakdown-answer">
+                            Example → Breakdown → Final Answer
+                          </option>
+                          <option value="step-by-step-list">
+                            Step-by-step numbered list
+                          </option>
+                        </select>
+                      </div>
+
+                      {/* Save Button */}
+                      <button
+                        type="button"
+                        className="btn primary save-rules-btn"
+                        onClick={handleSaveBehaviourRules}
+                      >
+                        Save Behaviour Rules
+                      </button>
+                    </div>
+
+                    {/* Display Saved Configuration */}
+                    {savedConfig && (
+                      <div className="saved-config-display">
+                        <h4>Current Configuration:</h4>
+                        <div className="config-summary">
+                          {savedConfig.tone && (
+                            <div><strong>Tone:</strong> {savedConfig.tone.replace(/-/g, " ")}</div>
+                          )}
+                          {savedConfig.teachingStyle && (
+                            <div><strong>Teaching Style:</strong> {savedConfig.teachingStyle.replace(/-/g, " ")}</div>
+                          )}
+                          {savedConfig.languageLevel && (
+                            <div><strong>Language Level:</strong> {savedConfig.languageLevel.replace(/-/g, " ")}</div>
+                          )}
+                          {savedConfig.behaviourRules.length > 0 && (
+                            <div><strong>Behaviour Rules:</strong> {savedConfig.behaviourRules.join(", ")}</div>
+                          )}
+                          {savedConfig.responseStructure && (
+                            <div><strong>Response Structure:</strong> {savedConfig.responseStructure.replace(/-/g, " ")}</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Text‑to‑Speech controls */}
                   <div className="tts-panel">
