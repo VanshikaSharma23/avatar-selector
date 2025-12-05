@@ -4,6 +4,11 @@ import "./index.css";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, useGLTF } from "@react-three/drei";
 import { Box3, Vector3 } from "three";
+import * as pdfjsLib from "pdfjs-dist";
+
+// Configure PDF.js worker - using local worker file from public folder
+// Files in the public folder are served at the root path by Vite
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 // Avatar images from src/assets/avatar/
 import southIndianImg from "./assets/avatar/South Indian.jpg";
@@ -278,6 +283,8 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [availableVoices, setAvailableVoices] = useState([]);
   const [genderVoices, setGenderVoices] = useState({ male: null, female: null });
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Load browser voices for SpeechSynthesis
   React.useEffect(() => {
@@ -414,6 +421,66 @@ export default function App() {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // Handle file upload and extract text
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const fileName = file.name.toLowerCase();
+    const fileExtension = fileName.split(".").pop();
+
+    try {
+      let extractedText = "";
+
+      if (fileExtension === "txt" || fileExtension === "md") {
+        // Handle text files (.txt, .md)
+        extractedText = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result || "");
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
+      } else if (fileExtension === "pdf") {
+        // Handle PDF files
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const numPages = pdf.numPages;
+        const textPromises = [];
+
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item) => item.str)
+            .join(" ");
+          textPromises.push(pageText);
+        }
+
+        extractedText = textPromises.join("\n\n");
+      } else {
+        alert(
+          `Unsupported file type: .${fileExtension}\nSupported formats: .txt, .md, .pdf`
+        );
+        setIsUploading(false);
+        return;
+      }
+
+      // Set extracted text to textarea
+      setTtsText(extractedText.trim());
+      alert(`Text extracted from ${file.name} successfully!`);
+    } catch (error) {
+      console.error("Error reading file:", error);
+      alert(`Failed to read file: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+      // Reset file input so same file can be selected again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
   return (
     <div className="app">
       <header>
@@ -501,6 +568,29 @@ export default function App() {
                   {/* Text‑to‑Speech controls */}
                   <div className="tts-panel">
                     <h3>Text to Speech</h3>
+                    
+                    {/* File Upload Section */}
+                    <div className="tts-upload-section">
+                      <label className="tts-upload-btn" htmlFor="tts-file-upload">
+                        <span className="tts-upload-icon">📄</span>
+                        <span>
+                          {isUploading ? "Uploading..." : "Upload Document"}
+                        </span>
+                        <input
+                          id="tts-file-upload"
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".txt,.md,.pdf"
+                          onChange={handleFileUpload}
+                          disabled={isUploading}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                      <span className="tts-upload-hint">
+                        Supports .txt, .md, .pdf
+                      </span>
+                    </div>
+
                     <div className="tts-row">
                       <label className="tts-label" htmlFor="tts-text">
                         Text
@@ -509,7 +599,7 @@ export default function App() {
                         id="tts-text"
                         className="tts-input"
                         rows={3}
-                        placeholder="Type what you want your AI teacher to say…"
+                        placeholder="Type what you want your AI teacher to say… or upload a document above"
                         value={ttsText}
                         onChange={(e) => setTtsText(e.target.value)}
                       />
