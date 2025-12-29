@@ -248,9 +248,8 @@ function AvatarDropdown({ avatars, selected, onSelect }) {
               <button
                 type="button"
                 key={avatar.id}
-                className={`avatar-select-item ${
-                  selected && selected.id === avatar.id ? "active" : ""
-                } ${focusedIndex === index ? "focused" : ""}`}
+                className={`avatar-select-item ${selected && selected.id === avatar.id ? "active" : ""
+                  } ${focusedIndex === index ? "focused" : ""}`}
                 onClick={() => {
                   onSelect(avatar);
                   setOpen(false);
@@ -285,7 +284,7 @@ export default function App() {
   const [genderVoices, setGenderVoices] = useState({ male: null, female: null });
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
-  
+
   // Behavioural Rules Configuration State
   const [behaviouralTone, setBehaviouralTone] = useState("");
   const [teachingStyle, setTeachingStyle] = useState("");
@@ -378,7 +377,7 @@ export default function App() {
     const lower = (s) => (s || "").toLowerCase();
     const femaleKeywords = ["female", "woman", "girl", "samantha", "victoria", "kate", "maria", "zira", "hazel", "susan", "karen", "linda", "veena", "tessa"];
     const maleKeywords = ["male", "man", "boy", "daniel", "alex", "david", "mark", "richard", "james", "ravi"];
-    
+
     const keywords = targetGender === "female" ? femaleKeywords : maleKeywords;
     const genderMatchedVoice = availableVoices.find((v) =>
       keywords.some((kw) => lower(v.name).includes(kw))
@@ -416,12 +415,12 @@ export default function App() {
 
     // Clear any previous speech completely
     stopSpeaking();
-    
+
     // Small delay to ensure speech synthesis queue is cleared
     setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(ttsText);
       const chosenVoice = chooseVoiceForAvatar(selected);
-      
+
       // FIXED: Force voice assignment - ensure gender match
       if (chosenVoice) {
         utterance.voice = chosenVoice;
@@ -437,36 +436,36 @@ export default function App() {
         }
       }
 
-    // Adjust voice characteristics based on avatar tone and the selected tone.
-    // Here we intentionally exaggerate differences so each tone is clearly audible.
-    const effectiveTone = tone || selected.defaultTone || "neutral";
-    switch (effectiveTone) {
-      case "energetic":
-        // Noticeably fast and a bit higher pitch
-        utterance.rate = 1.6;
-        utterance.pitch = 1.3;
-        break;
-      case "calm":
-        // Clearly slower and slightly deeper
-        utterance.rate = 0.7;
-        utterance.pitch = 0.8;
-        break;
-      case "warm":
-        // Medium speed, richer / slightly higher pitch
-        utterance.rate = 0.95;
-        utterance.pitch = 1.4;
-        break;
-      case "friendly":
-        // A bit faster than normal and clearly higher pitch
-        utterance.rate = 1.2;
-        utterance.pitch = 1.6;
-        break;
-      case "neutral":
-      default:
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        break;
-    }
+      // Adjust voice characteristics based on avatar tone and the selected tone.
+      // Here we intentionally exaggerate differences so each tone is clearly audible.
+      const effectiveTone = tone || selected.defaultTone || "neutral";
+      switch (effectiveTone) {
+        case "energetic":
+          // Noticeably fast and a bit higher pitch
+          utterance.rate = 1.6;
+          utterance.pitch = 1.3;
+          break;
+        case "calm":
+          // Clearly slower and slightly deeper
+          utterance.rate = 0.7;
+          utterance.pitch = 0.8;
+          break;
+        case "warm":
+          // Medium speed, richer / slightly higher pitch
+          utterance.rate = 0.95;
+          utterance.pitch = 1.4;
+          break;
+        case "friendly":
+          // A bit faster than normal and clearly higher pitch
+          utterance.rate = 1.2;
+          utterance.pitch = 1.6;
+          break;
+        case "neutral":
+        default:
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+          break;
+      }
 
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
@@ -639,34 +638,51 @@ export default function App() {
         </p>
       </header>
 
-      <main>
+      <main className={selected ? "selected-view" : ""}>
         {/* LEFT: avatar cards */}
-        <section className="left">
-          <div className="grid" role="list">
-            {AVATARS.map((avatar) => (
-              <div
-                role="listitem"
-                key={avatar.id}
-                data-avatar-id={avatar.id}
-              >
-                <AvatarCard
-                  avatar={avatar}
-                  selected={selected && selected.id === avatar.id}
-                  onSelect={handleSelect}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
+        {!selected && (
+          <section className="left">
+            <div className="grid" role="list">
+              {AVATARS.map((avatar) => (
+                <div
+                  role="listitem"
+                  key={avatar.id}
+                  data-avatar-id={avatar.id}
+                >
+                  <AvatarCard
+                    avatar={avatar}
+                    selected={selected && selected.id === avatar.id}
+                    onSelect={handleSelect}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* RIGHT: 3D preview + dropdown + select button + TTS controls */}
-        <aside className="preview">
+        <aside className={`preview ${selected ? "selected-preview" : ""}`}>
           <div className="preview-card">
-            <h2>Preview</h2>
+            {selected && (
+              <button
+                type="button"
+                className="back-btn"
+                onClick={() => setSelected(null)}
+                aria-label="Back to avatar selection"
+              >
+                ← Back to Selection
+              </button>
+            )}
+            <h2>{selected ? selected.name : "Preview"}</h2>
 
             {selected ? (
               <>
                 <div className="preview-animation">
+                  <AvatarDropdown
+                    avatars={AVATARS}
+                    selected={selected}
+                    onSelect={handleSelect}
+                  />
                   <Canvas
                     camera={{ position: [0, 1.6, 4], fov: 30 }}
                     className="preview-animation-media"
@@ -698,11 +714,6 @@ export default function App() {
 
                 {/* Dropdown + select button */}
                 <div className="preview-info">
-                  <AvatarDropdown
-                    avatars={AVATARS}
-                    selected={selected}
-                    onSelect={handleSelect}
-                  />
 
                   <button
                     type="button"
@@ -878,7 +889,7 @@ export default function App() {
                   {/* Text‑to‑Speech controls */}
                   <div className="tts-panel">
                     <h3>Text to Speech</h3>
-                    
+
                     {/* File Upload Section */}
                     <div className="tts-upload-section">
                       <label className="tts-upload-btn" htmlFor="tts-file-upload">
