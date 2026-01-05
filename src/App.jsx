@@ -285,6 +285,9 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
+  // New state for speaking view page
+  const [showSpeakingView, setShowSpeakingView] = useState(false);
+
   // Behavioural Rules Configuration State
   const [behaviouralTone, setBehaviouralTone] = useState("");
   const [teachingStyle, setTeachingStyle] = useState("");
@@ -628,6 +631,75 @@ export default function App() {
       }
     }
   };
+
+  // If showSpeakingView is true, render the Speaking View page
+  if (showSpeakingView && selected && ttsText.trim()) {
+    return (
+      <div className="speaking-view">
+        <button
+          type="button"
+          className="back-to-config-btn"
+          onClick={() => {
+            stopSpeaking();
+            setShowSpeakingView(false);
+          }}
+        >
+          ← Back
+        </button>
+
+        <div className="speaking-view-container">
+          <div className="speaking-avatar">
+            <Canvas
+              camera={{ position: [0, 1.6, 4], fov: 30 }}
+              className="speaking-canvas"
+            >
+              <ambientLight intensity={0.9} />
+              <directionalLight position={[2, 4, 3]} intensity={1.2} />
+
+              <Suspense fallback={null}>
+                {selected.modelUrl && (
+                  <AvatarModel
+                    url={selected.modelUrl}
+                    scaleFactor={selected.scaleFactor || 2.5}
+                    yOffset={selected.yOffset || 0}
+                  />
+                )}
+                <Environment preset="city" />
+              </Suspense>
+
+              <OrbitControls
+                enablePan={false}
+                minDistance={3}
+                maxDistance={6}
+              />
+            </Canvas>
+
+            {/* Small overlay controls inside avatar box */}
+            <div className="avatar-overlay-controls">
+              <button
+                type="button"
+                className="avatar-control-btn play-btn"
+                onClick={handleSpeak}
+                disabled={isSpeaking}
+                title={isSpeaking ? "Speaking..." : "Start Speaking"}
+              >
+                {isSpeaking ? "⏸" : "▶"}
+              </button>
+              <button
+                type="button"
+                className="avatar-control-btn stop-btn"
+                onClick={stopSpeaking}
+                disabled={!isSpeaking}
+                title="Stop"
+              >
+                ⏹
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -979,6 +1051,22 @@ export default function App() {
                         Stop
                       </button>
                     </div>
+
+                    {/* Start Teaching Button - Navigate to Speaking View */}
+                    <button
+                      type="button"
+                      className="btn primary start-teaching-btn"
+                      onClick={() => {
+                        if (!ttsText.trim()) {
+                          alert("Please enter or upload text content first!");
+                          return;
+                        }
+                        setShowSpeakingView(true);
+                      }}
+                      disabled={!ttsText.trim()}
+                    >
+                      Start Teaching →
+                    </button>
                   </div>
                 </div>
               </>
