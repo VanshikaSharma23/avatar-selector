@@ -346,7 +346,6 @@ export default function App() {
       setSavedConfig(saved);
     }
   }, []);
-
   // Whenever avatar changes, align tone with avatar default and clear TTS buffer
   React.useEffect(() => {
     if (selected?.defaultTone) {
@@ -439,17 +438,17 @@ export default function App() {
       // Apply behavioural rules to the text before speaking
       const currentConfig = getConfig();
       let textToSpeak = ttsText;
-      
+
       // Only apply rules if configuration exists and is valid
       if (currentConfig && (
-        currentConfig.teachingStyle || 
-        currentConfig.languageLevel || 
+        currentConfig.teachingStyle ||
+        currentConfig.languageLevel ||
         (currentConfig.behaviourRules && currentConfig.behaviourRules.length > 0) ||
         currentConfig.responseStructure
       )) {
         textToSpeak = executeBehaviouralRules(ttsText, currentConfig);
       }
-      
+
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
       const chosenVoice = chooseVoiceForAvatar(selected);
 
@@ -514,7 +513,7 @@ export default function App() {
       setIsSpeaking(false);
     }
     setSelected(avatar);
-    
+
     // Load behavioural rules config for this avatar if available
     const saved = loadConfig();
     if (saved && saved.avatarId === avatar.id) {
@@ -524,7 +523,6 @@ export default function App() {
       setResponseStructure(saved.responseStructure || "");
       setSavedConfig(saved);
     }
-    
     // also scroll the card into view when picked from dropdown
     const el = document.querySelector(`[data-avatar-id="${avatar.id}"]`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -541,7 +539,7 @@ export default function App() {
 
   /**
    * Save Behavioural Rules Configuration
-   * 
+   *
    * Stores the selected behavioural rules configuration persistently
    * and makes it available globally for execution.
    */
