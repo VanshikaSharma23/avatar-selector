@@ -21,6 +21,10 @@ import female1Img from "./assets/avatar/Female 1.jpg";
 import female2Img from "./assets/avatar/Female 2.jpg";
 import punjabiImg from "./assets/avatar/Punjabi.jpg";
 import himachaliImg from "./assets/avatar/Himachali.jpg";
+import cyborgFemaleImg from "./assets/avatar/cyborgfemale.png";
+import cyborgMaleImg from "./assets/avatar/cyborgmale.png";
+import cyborgFemale2Img from "./assets/avatar/CyborgFemale2.png";
+import cyborgMale2Img from "./assets/avatar/CyborgMale2.png";
 
 // 3D models from src/assets/models/  (note the ?url)
 import southIndianModel from "./assets/models/South Indian.glb?url";
@@ -29,6 +33,10 @@ import female1Model from "./assets/models/Female 1.glb?url";
 import female2Model from "./assets/models/Female 2.glb?url";
 import bengaliModel from "./assets/models/Bengali.glb?url";
 import himachaliModel from "./assets/models/Himachali.glb?url";
+import cyborgFemaleModel from "./assets/models/CyborgFemale.glb?url";
+import cyborgMaleModel from "./assets/models/CyborgMale.glb?url";
+import cyborgFemale2Model from "./assets/models/CyborgFemale2.glb?url";
+import cyborgMale2Model from "./assets/models/CyborgMale2.glb?url";
 
 // Avatars list (Himachali has custom offset to fix framing)
 // Also includes basic voice metadata that we'll use to drive text‑to‑speech.
@@ -88,6 +96,42 @@ const AVATARS = [
     gender: "male",
     language: "en-IN",
     defaultTone: "friendly",
+  },
+   {
+    id: "cyborg-female",
+    name: "Cyborg Female",
+    imageUrl: cyborgFemaleImg,
+    modelUrl: cyborgFemaleModel,
+    gender: "female",
+    language: "en-US",
+    defaultTone: "neutral",
+  },
+  {
+    id: "cyborg-male",
+    name: "Cyborg Male",
+    imageUrl: cyborgMaleImg,
+    modelUrl: cyborgMaleModel,
+    gender: "male",
+    language: "en-US",
+    defaultTone: "energetic",
+  },
+  {
+    id: "cyborg-female-2",
+    name: "Cyborg Female 2",
+    imageUrl: cyborgFemale2Img,
+    modelUrl: cyborgFemale2Model,
+    gender: "female",
+    language: "en-US",
+    defaultTone: "neutral",
+  },
+  {
+    id: "cyborg-male-2",
+    name: "Cyborg Male 2",
+    imageUrl: cyborgMale2Img,
+    modelUrl: cyborgMale2Model,
+    gender: "male",
+    language: "en-US",
+    defaultTone: "energetic",
   },
 ];
 
