@@ -15,12 +15,12 @@ import { executeBehaviouralRules } from "./services/behaviouralRulesEngine";
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 // Avatar images from src/assets/avatar/
-import southIndianImg from "./assets/avatar/South Indian.jpg";
-import bengaliImg from "./assets/avatar/Bengali.jpg";
-import female1Img from "./assets/avatar/Female 1.jpg";
-import female2Img from "./assets/avatar/Female 2.jpg";
-import punjabiImg from "./assets/avatar/Punjabi.jpg";
-import himachaliImg from "./assets/avatar/Himachali.jpg";
+import southIndianImg from "./assets/avatar/southIndian.png";
+import bengaliImg from "./assets/avatar/bengali.png";
+import female1Img from "./assets/avatar/female1.png";
+import female2Img from "./assets/avatar/female2.png";
+import punjabiImg from "./assets/avatar/punjabi.png";
+import himachaliImg from "./assets/avatar/himachali.png";
 import cyborgFemaleImg from "./assets/avatar/cyborgfemale.png";
 import cyborgMaleImg from "./assets/avatar/cyborgmale.png";
 import cyborgFemale2Img from "./assets/avatar/CyborgFemale2.png";
