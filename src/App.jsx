@@ -336,6 +336,12 @@ export default function App() {
   // New state for speaking view page
   const [showSpeakingView, setShowSpeakingView] = useState(false);
 
+  // Q&A state for speaking view
+  const [studentQuestion, setStudentQuestion] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
+  const [isLoadingResponse, setIsLoadingResponse] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
   // Behavioural Rules Configuration State
   const [teachingStyle, setTeachingStyle] = useState("");
   const [languageLevel, setLanguageLevel] = useState("");
@@ -613,6 +619,110 @@ export default function App() {
   };
 
   // Handle file upload and extract text
+  /**
+   * Handle student question submission
+   * 
+   * Collects current configuration values and sends them to the /ask API.
+   * The backend builds a structured prompt and calls Gemini API.
+   * Response is displayed and automatically spoken.
+   */
+  const handleAskQuestion = async () => {
+    if (!studentQuestion.trim()) {
+      setErrorMessage("Please enter a question.");
+      return;
+    }
+
+    // Clear previous error and response
+    setErrorMessage("");
+    setAiResponse("");
+    setIsLoadingResponse(true);
+
+    try {
+      // Collect current configuration values
+      const currentConfig = getConfig();
+      const requestBody = {
+        question: studentQuestion.trim(),
+        teachingStyle: currentConfig?.teachingStyle || teachingStyle || "",
+        languageLevel: currentConfig?.languageLevel || languageLevel || "",
+        behaviourRules: currentConfig?.behaviourRules || behaviourRules || [],
+        responseStructure: currentConfig?.responseStructure || responseStructure || "",
+        tone: tone || selected?.defaultTone || "neutral",
+        avatarName: selected?.name || ""
+      };
+
+      // Call backend /ask API
+      // In development, Vite proxy will forward to backend server
+      const response = await fetch('/api/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      // Check if response is ok before trying to parse JSON
+      if (!response.ok) {
+        // Try to parse error response, but handle cases where it's not JSON
+        let errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          // If response is not JSON, use status text
+          const text = await response.text();
+          errorMessage = text || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON response, with error handling for empty or invalid JSON
+      let data;
+      try {
+        const responseText = await response.text();
+        if (!responseText || !responseText.trim()) {
+          throw new Error('Empty response from server');
+        }
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Error parsing JSON response:', parseError);
+        throw new Error('Invalid response from server. Please check if the backend is running.');
+      }
+      
+      // Set the AI response
+      setAiResponse(data.response || "");
+
+      // Automatically speak the response if available
+      if (data.response && data.response.trim()) {
+        // Update ttsText to the response so it can be spoken
+        setTtsText(data.response);
+        // Small delay to ensure state is updated, then speak
+        setTimeout(() => {
+          handleSpeak();
+        }, 100);
+      }
+
+    } catch (error) {
+      console.error('Error asking question:', error);
+      
+      // Provide more helpful error messages
+      let errorMsg = error.message || 'Failed to get response. Please try again.';
+      
+      // Check for network errors (backend not running)
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+        errorMsg = 'Cannot connect to server. Please make sure the backend server is running on port 3001.';
+      }
+      
+      // Check for JSON parsing errors
+      if (error.message?.includes('JSON') || error.message?.includes('parse')) {
+        errorMsg = 'Server returned an invalid response. Please check if the backend is running correctly.';
+      }
+      
+      setErrorMessage(errorMsg);
+    } finally {
+      setIsLoadingResponse(false);
+    }
+  };
+
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -673,7 +783,7 @@ export default function App() {
   };
 
   // If showSpeakingView is true, render the Speaking View page
-  if (showSpeakingView && selected && ttsText.trim()) {
+  if (showSpeakingView && selected) {
     return (
       <div className="speaking-view">
         <button
@@ -682,6 +792,9 @@ export default function App() {
           onClick={() => {
             stopSpeaking();
             setShowSpeakingView(false);
+            setStudentQuestion("");
+            setAiResponse("");
+            setErrorMessage("");
           }}
         >
           ← Back
@@ -720,7 +833,7 @@ export default function App() {
                 type="button"
                 className="avatar-control-btn play-btn"
                 onClick={handleSpeak}
-                disabled={isSpeaking}
+                disabled={isSpeaking || !ttsText.trim()}
                 title={isSpeaking ? "Speaking..." : "Start Speaking"}
               >
                 {isSpeaking ? "⏸" : "▶"}
@@ -735,6 +848,84 @@ export default function App() {
                 ⏹
               </button>
             </div>
+          </div>
+
+          {/* Q&A Interface Panel */}
+          <div className="qa-panel">
+            <h3 className="qa-panel-title">Ask Your Question</h3>
+            
+            {/* Question Input */}
+            <div className="qa-input-section">
+              <textarea
+                className="qa-question-input"
+                placeholder="Type your question here..."
+                value={studentQuestion}
+                onChange={(e) => setStudentQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  // Allow Ctrl/Cmd+Enter to submit
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    handleAskQuestion();
+                  }
+                }}
+                rows={3}
+                disabled={isLoadingResponse}
+              />
+              <button
+                type="button"
+                className="btn primary qa-submit-btn"
+                onClick={handleAskQuestion}
+                disabled={!studentQuestion.trim() || isLoadingResponse}
+              >
+                {isLoadingResponse ? "Thinking..." : "Ask Question"}
+              </button>
+            </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="qa-error-message">
+                ⚠️ {errorMessage}
+              </div>
+            )}
+
+            {/* AI Response Display */}
+            {aiResponse && (
+              <div className="qa-response-section">
+                <h4 className="qa-response-title">AI Teacher Response:</h4>
+                <div className="qa-response-content">
+                  {aiResponse}
+                </div>
+                <div className="qa-response-actions">
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => {
+                      setTtsText(aiResponse);
+                      setTimeout(() => handleSpeak(), 100);
+                    }}
+                    disabled={isSpeaking || !aiResponse.trim()}
+                  >
+                    {isSpeaking ? "Speaking..." : "🔊 Speak Response"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={stopSpeaking}
+                    disabled={!isSpeaking}
+                  >
+                    Stop
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Loading Indicator */}
+            {isLoadingResponse && (
+              <div className="qa-loading">
+                <div className="qa-loading-spinner"></div>
+                <p>AI teacher is thinking...</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1069,17 +1260,13 @@ export default function App() {
                     </div>
 
                     {/* Start Teaching Button - Navigate to Speaking View */}
+                    {/* Note: Q&A interface is now available in speaking view, so text is optional */}
                     <button
                       type="button"
                       className="btn primary start-teaching-btn"
                       onClick={() => {
-                        if (!ttsText.trim()) {
-                          alert("Please enter or upload text content first!");
-                          return;
-                        }
                         setShowSpeakingView(true);
                       }}
-                      disabled={!ttsText.trim()}
                     >
                       Start Teaching →
                     </button>
